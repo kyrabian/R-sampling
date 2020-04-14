@@ -1,1 +1,2 @@
-# R-sampling
+Math 525 assignments
+Sampling
