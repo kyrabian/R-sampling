@@ -1,0 +1,107 @@
+---
+title: "Math 525 A4"
+output: html_document
+---
+####Question 6.10
+#####part a
+```{r}
+library(survey)
+library(tidyverse)
+library(sampling) 
+library(pps) 
+set.seed(100)
+statepps<-read.csv("statepps.csv")
+statepps_complete = statepps %>% drop_na(counties, state)
+dim(statepps_complete)
+
+num_state = statepps_complete %>% summarise(Num_Clusters = n_distinct(state))
+num_state
+
+Mi_table = statepps_complete %>% group_by(state) %>% summarise(Mi = n()) %>%
+ungroup() %>% mutate(N = n())
+Mi_table %>% head()
+
+print("Total number of counties sampled")
+Mi_table %>% ungroup() %>% summarise(TotalSSUs=sum(Mi)) %>% head()
+#with replacement sampling
+Mi_table = Mi_table %>% mutate(psi_k = Mi/sum(Mi))
+Mi_table
+
+n=10
+onestage_wr = Mi_table %>% sample_n(size=n, replace=T, weight=Mi)
+onestage_wr = onestage_wr %>% group_by(state) %>% mutate(replication = 1:n())
+onestage_wr %>% head()
+onestage_wr %>% group_by(state) %>% summarise(count=n()) %>% arrange(desc(count))
+
+onestage_sample_wr = inner_join(statepps_complete,onestage_wr,by="state") %>%
+mutate(weight = 1/(n*psi_k))
+dim(onestage_sample_wr)
+inner_join(statepps_complete,onestage_wr,by="state") %>% filter(!duplicated(state)) %>% nrow()
+inner_join(statepps_complete,onestage_wr,by="state") %>% filter(!duplicated(counties)) %>% nrow()
+onestage_cluster_wr_design = svydesign(id=~state, data = onestage_sample_wr,
+weight = ~weight)
+svytotal(~counties, onestage_cluster_wr_design )
+```
+
+The estimated value is 3442, which is higher than the true value 3142.
+
+#####part b
+```{r}
+set.seed(100)
+state691 = statepps_complete%>%slice(sample(1:nrow(statepps_complete),
+                     size=10, replace=T))
+srs_design = survey::svydesign(id=~1,data=state691, fpc=rep(51,10))
+svytotal(~counties,srs_design)
+```
+
+The value estimated by Tom is lower than I got, it is not unbiased for the population since it is lower than the true value of population total.
+
+
+####Question 6.45
+#####part a
+```{r}
+set.seed(100)
+### Ratio
+ipums<-read.csv("ipums.csv")
+ipums_complete = ipums %>% drop_na(Inctot, Psu)
+dim(ipums_complete)
+
+num_Psu = ipums_complete %>% summarise(Num_Clusters = n_distinct(Psu))
+num_Psu
+Mi_table = ipums_complete %>% group_by(Psu) %>% summarise(Mi = n()) %>%
+ungroup() %>% mutate(N = n())
+Mi_table %>% head()
+print("Total number of people sampled")
+
+Mi_table %>% ungroup() %>% summarise(TotalSSUs=sum(Mi)) %>% head()
+Mi_table = Mi_table %>% mutate(psi_k = Mi/sum(Mi))
+Mi_table
+
+n=10
+## Need to adjust Mi values so size relative to total is not bigger than 1/n
+# Initialize
+Mi_table = Mi_table %>% mutate(adj_size=Mi/sum(Mi))
+# Forces inclusion probabilities to be less than or equal to 1
+Mi_table = Mi_table %>% mutate(pik = inclusionprobabilities(Mi,n=n))
+## Create vector indicating sampled PSU's
+tille_sampled = with(Mi_table, UPtille(pik))
+# Filters Mi table to include only PSU's sampled
+onestage_wor = Mi_table %>% filter(tille_sampled==1)
+onestage_wor_sample = inner_join(ipums_complete,onestage_wor,by="Psu")
+
+onestage_cluster_wor_design = svydesign(id=~Psu, data = onestage_wor_sample, fpc=~pik,
+pps="brewer") # Brewer uses PPS approximation
+svytotal(~Inctot, onestage_cluster_wor_design)
+
+twostage_wor_sample = onestage_wor_sample %>% group_by(Psu) %>%
+mutate(mi = min(Mi,20)) %>% 
+sample_n(size=mi,replace=FALSE) %>% ungroup()
+```
+
+#####part b
+```{r}
+twostage_cluster_wor_design = svydesign(id=~Psu, data = twostage_wor_sample, weight=~I(1/pik)+I(Mi),pps="brewer")
+                                      
+svytotal(~Inctot, twostage_cluster_wor_design)
+svymean(~Inctot, twostage_cluster_wor_design)
+```
