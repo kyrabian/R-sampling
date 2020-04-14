@@ -1,0 +1,57 @@
+---
+title: "525 chp4"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(survey)
+library(srvyr)
+ipums=read.csv("ipums.csv")
+ipums_complete = ipums %>% filter(!is.na(Inctot),!is.na(Age))
+
+dim(ipums_complete)
+
+#draw a srs of sample size 691
+set.seed(100)
+ipums691 = ipums_complete %>% 
+  slice(sample(1:nrow(ipums_complete), size=691, replace=F)) %>%
+  mutate(fpc = nrow(ipums_complete))
+
+srs_design = survey::svydesign(id=~1,data=ipums691, fpc=rep(53461,691))
+svytotal(~Inctot, srs_design)
+
+#use the auxiliary variable
+ipums_totals = ipums_complete %>% summarise(N_Inctot = sum(Inctot), 
+                              N_Age = sum(Age), 
+                              B = N_Age/N_Inctot)
+ipums_totals   
+
+r =  svyratio(~Inctot,~Age,srs_design)
+r
+confint(r)
+
+predict_r = predict(r,total=ipums_totals %>% pull(N_Age))
+predict_r
+svytotal(~Inctot,srs_design)
+predict_r$total + c(qnorm(0.025),qnorm(0.975))*predict_r$se
+confint(svytotal(~Inctot,srs_design)) 
+#the true total is
+ipums_totals
+```
+
+```{r}
+ipums_complete %>% summarise(CV_Inctot = (sd(Inctot)/sqrt(691))/mean(Inctot))
+0.04471*477441932
+```
+The estimated value will increase with the standard error, this can be shown from the plot.
+The plot is below:
+```{r}
+ggplot(ipums691,aes(x=Age,y=Inctot)) + 
+  geom_point() + geom_abline(intercept=0,slope=r[[1]],color="red")
+```
+
+```{r}
+ipums691%>% summarise(cor=cor(Age,Inctot))
+svyboxplot(I(Inctot/Age)~1,srs_design)
+```
