@@ -1,0 +1,80 @@
+---
+title: "525 Assignment1"
+output: html_document
+---
+####part a
+the topcoding will hide some of the real data, therefore the true model might be underestimated and it makes it harder to do prediction.
+
+####part b
+```{r}
+library(tidyverse)
+library(survey)
+library(srvyr)
+library(knitr)
+library(kableExtra)
+
+data = read_csv("ipums.csv")
+head(data)
+dim(data)
+#check for null
+data_complete=data %>% filter(!is.na(Inctot))
+dim(data_complete)
+#dim N is 53461
+
+set.seed(100)
+ipums50 = data_complete%>%slice(sample(1:nrow(data_complete),
+                     size=50, replace=F))
+dim(ipums50)
+head(ipums50)
+ipums50 %>% 
+  summarise(SampleMean=mean(Inctot),
+            SampleVar=var(Inctot),
+            SampleSD=sd(Inctot)) %>%
+  gather(stat,val) %>% 
+  kable(.,format="html",digits=0) %>% 
+  kable_styling(.)
+
+```
+
+we have that e=700, from R above, my sample variance is 89293481, N=53641
+```{r}
+z = qnorm(0.975)
+e = 700
+N = 53461
+s_s = var(ipums50$Inctot)
+n0 = z^2*s_s/e^2
+n = n0/(1+n0/N)
+n
+```
+
+we will need a sample size of 691.
+
+####part c
+```{r}
+set.seed(100)
+ipums691 = data_complete%>%slice(sample(1:nrow(data_complete),
+                     size=691, replace=F))
+dim(ipums691)
+head(ipums691)
+ipums691%>% 
+  summarise(SampleMean=mean(Inctot),
+                          SampleVar = var(Inctot),
+                          SampleSD = sd(Inctot),
+                          t_hat = mean(Inctot)*53461,
+                          se_t_hat = 53461*sqrt((1 - 691/53461))*sd(Inctot)/sqrt(691))  %>% 
+  gather(stat,val) %>% 
+  kable(.,format="html",digits=0) %>% 
+  kable_styling(.)
+
+srs_design = survey::svydesign(id=~1,data=ipums691, fpc=rep(53461,691))
+```
+The total income for the population is :
+```{r}
+svytotal(~Inctot,srs_design)
+```
+
+And the 95% confidence interval is:
+```{r}
+confint(svytotal(~Inctot,srs_design))
+ggplot(ipums691,aes(x=Inctot)) + geom_histogram(fill="lightblue",col="black")
+```
