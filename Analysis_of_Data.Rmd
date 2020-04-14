@@ -1,0 +1,62 @@
+---
+title: "Course Data Analysis"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+```{r}
+library(tidyverse)
+library(readxl)
+thedata=read_excel("Sampling2019_Data.xlsx") %>% as_tibble()
+thedata  = thedata %>% mutate(Eyes = recode(Eyes, Brown = "Brown", Black="Black", .default="Other"), 
+                              Year = recode(Year, MSc1 = "MSc", MSc2 = "MSc", U1 = "U1/U2", U2="U1/U2",
+                                            U3 = "U3", U4 = "U4+", U6 = "U4+"))
+thedata 
+```
+
+
+```{r,cache=TRUE}
+true_summaries = thedata %>% summarise(N = n(),
+                                   True_Sum = sum(Hours), 
+                                   True_Mean = mean(Hours), 
+                                   True_Var = var(Hours))
+true_summaries
+
+Sampled_obs = c(6, 10, 21, 25)
+
+thedata %>% filter(ID %in% Sampled_obs) %>% summarise(n = n(),
+                                   Sample_Sum = sum(Hours), 
+                                   Sample_Mean = mean(Hours), 
+                                   Sample_Var = var(Hours))
+
+list_of_ids = thedata %>% pull(ID)
+all_possible_samples = combn(list_of_ids,4,simplify=FALSE)
+length(all_possible_samples)
+all_possible_samples[1:5]
+
+one_sample = function(x,data){
+  data %>% filter(ID %in% x) %>% summarise(IDs=paste(x,collapse=","),
+                                   n = n(),
+                                   Sample_Sum = sum(Hours), 
+                                   Sample_Mean = mean(Hours), 
+                                   Sample_Var = var(Hours))
+}
+
+all_summaries = map_dfr(all_possible_samples, one_sample,data=thedata)
+
+
+
+```
+
+
+```{r}
+
+all_summaries %>% summarise(Mean_of_Means = mean(Sample_Mean),
+                            SE = sd(Sample_Mean),
+                            Mean_of_Vars = mean(Sample_Var))
+ggplot(all_summaries,aes(x=Sample_Mean)) + geom_histogram(fill="lightblue",col="black",bins=30) 
+
+```
