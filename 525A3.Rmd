@@ -1,0 +1,72 @@
+---
+title: "525 A3"
+output: html_document
+---
+####5.38
+#####part a
+```{r}
+library(survey)
+library(tidyverse)
+set.seed(100)
+ipums<-read.csv("ipums.csv")
+ipums_complete = ipums %>% drop_na(Inctot)
+dim(ipums_complete)
+#53461
+
+
+Psu_Mi=table(ipums$Psu)
+Psu_Mi
+
+num_psu = ipums_complete %>% summarise(Num_Clusters = n_distinct(Psu))
+num_psu
+
+```
+
+
+#####part b
+```{r}
+samp_n =691  #from Ass2
+totalcost_SRS=50*samp_n
+total_sample_size=round((totalcost_SRS-10*100)/20)
+
+onestagecluster_sample =ipums_complete %>% filter(Psu %in% sample(unique(Psu),size=10))
+print("The dimensions of the dataset: ")
+dim(onestagecluster_sample)
+onestagecluster_sample %>% summarise(Num_Clusters_Sampled = n_distinct(Psu))
+
+Mi_table = onestagecluster_sample %>% group_by(Psu) %>% summarise(Mi = n())
+Mi_table %>% head()
+print("Total number of schools sampled")
+Mi_table %>% ungroup() %>% summarise(TotalSSUs=sum(Mi))
+
+counts_psu =onestagecluster_sample%>%count(Psu)%>%mutate(prop_psu=n/sum(n)) #sum(n)=sum_mi 
+counts_psu=onestagecluster_sample%>%count(Psu)%>%mutate(prop_psu=n/sum(n),prop_alloc_ssus=round(counts_psu$prop_psu*total_sample_size))
+
+onestagecluster_sample = onestagecluster_sample %>% inner_join(counts_psu,by="Psu")%>%
+  rename(fpc2=prop_alloc_ssus)
+
+onestagecluster_sample=onestagecluster_sample%>%mutate(fpc1 = num_psu%>%pull(Num_Clusters))
+print("FPC at ssu level, district numbers above")
+
+index=c(1:dim(onestagecluster_sample)[1])
+onestagecluster_sample$id=index
+  
+twostage_cluster= onestagecluster_sample %>% group_by(Psu)%>%slice(sample(1:n,size=fpc2,replace=F))
+
+```
+
+
+#####part c
+```{r}
+twostage_design = svydesign(id=~Psu+id,fpc=~fpc1+fpc2,data=twostage_cluster)
+svytotal(~Inctot,twostage_design)
+
+svymean(~Inctot,twostage_design)
+B_2 = svymean(~Inctot,twostage_design)[1]
+SeB_2 = sqrt(attributes(svymean(~Inctot,twostage_design))$var)
+
+B_2*53461
+SeB_2*53461
+
+
+```
